@@ -53,13 +53,12 @@
   .q{font-family:"Space Grotesk";font-weight:600;font-size:2.2rem;line-height:1.25;margin-bottom:24px;min-height:2.2em}
   .opts{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .opt{display:flex;align-items:center;gap:14px;border-radius:16px;padding:20px;color:#fff;font-size:1.3rem;
-    font-weight:600;transition:.2s}
-  .opt[data-k="0"]{background:var(--a)} .opt[data-k="1"]{background:var(--b)}
-  .opt[data-k="2"]{background:var(--c)} .opt[data-k="3"]{background:var(--d)}
-  .opt .tag{flex:0 0 40px;height:40px;display:grid;place-items:center;border-radius:10px;background:rgba(0,0,0,.22);
+    font-weight:600;transition:.2s;background:#141018;border:2px solid rgba(255,255,255,.55)}
+  .opt .tag{flex:0 0 40px;height:40px;display:grid;place-items:center;border-radius:10px;background:#fff;color:#141018;
     font-family:"Space Grotesk";font-weight:700}
-  .opt.dim{filter:grayscale(.6) brightness(.6);opacity:.55}
-  .opt.right{outline:5px solid #fff;box-shadow:0 0 0 5px var(--d),0 14px 34px -8px rgba(47,191,113,.6)}
+  .opt.dim{filter:brightness(.5);opacity:.5}
+  .opt.right{background:#fff;color:#141018;border-color:#fff}
+  .opt.right .tag{background:#141018;color:#fff}
   .status{min-height:2em;margin-top:18px;font-family:"Space Grotesk";font-weight:600;font-size:1.4rem}
   .status.good{color:var(--d)} .status.bad{color:var(--a)} .status.neutral{color:var(--gold)}
   .board{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:20px;padding:18px}
@@ -69,6 +68,24 @@
   .row .s{color:var(--gold)}
   .row.lead{background:rgba(255,209,102,.16);border:1px solid rgba(255,209,102,.4)}
   .controls{margin-top:22px;display:flex;gap:12px;justify-content:center}
+
+  /* modo equipes */
+  .modes{display:flex;gap:10px;margin:6px 0 4px}
+  .chip{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--soft);padding:9px 14px;
+    border-radius:999px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:"Space Grotesk"}
+  .chip.sel{background:var(--gold);color:#2a1a4a;border-color:var(--gold)}
+  .teamcols{display:flex;gap:12px}
+  .teamcol{flex:1;border-radius:16px;padding:12px;border:2px solid transparent;background:rgba(255,255,255,.04)}
+  .teamcol.blue{border-color:rgba(58,134,255,.4)} .teamcol.red{border-color:rgba(232,80,91,.4)}
+  .teamcol h4{font-family:"Space Grotesk";font-size:.9rem;margin-bottom:8px}
+  .teamcol.blue h4{color:#7cb0ff} .teamcol.red h4{color:#ff8b93}
+  .teamscore{display:flex;gap:14px;margin-bottom:18px}
+  .ts{flex:1;border-radius:16px;padding:14px 16px;border:2px solid transparent;text-align:center}
+  .ts.blue{background:rgba(58,134,255,.14);border-color:rgba(58,134,255,.5)}
+  .ts.red{background:rgba(232,80,91,.14);border-color:rgba(232,80,91,.5)}
+  .ts .tn{font-family:"Space Grotesk";font-weight:600;font-size:1rem}
+  .ts.blue .tn{color:#7cb0ff} .ts.red .tn{color:#ff8b93}
+  .ts .tv{font-family:"Space Grotesk";font-weight:700;font-size:2.4rem}
 
   /* ---- FIM ---- */
   .over{text-align:center;padding-top:5vh}
@@ -92,6 +109,12 @@
       <div class="lobby-right">
         <div class="kicker">◆ QUIZ SHOW ◆</div>
         <h1>Aguardando jogadores…</h1>
+        <div><label style="font-size:.8rem;color:var(--dim);font-family:'Space Grotesk'">Modo</label>
+          <div class="modes" id="modes">
+            <button class="chip sel" data-m="solo">Individual</button>
+            <button class="chip" data-m="team">Equipes 🔵🔴</button>
+          </div>
+        </div>
         <div class="settings">
           <div><label>Tema</label><select id="setCat"></select></div>
           <div><label>Perguntas</label>
@@ -102,6 +125,10 @@
               <option value="30">30s</option><option value="0">Sem limite</option></select></div>
         </div>
         <div class="players" id="lobbyPlayers"></div>
+        <div class="teamcols" id="lobbyTeams" style="display:none">
+          <div class="teamcol blue"><h4>🔵 Azul</h4><div id="teamBlueList"></div></div>
+          <div class="teamcol red"><h4>🔴 Vermelha</h4><div id="teamRedList"></div></div>
+        </div>
         <button class="btn" id="startBtn" disabled>Começar ▶</button>
         <div class="hint" id="lobbyHint">Precisa de pelo menos 2 jogadores conectados.</div>
       </div>
@@ -128,6 +155,10 @@
       </div>
       <div class="board">
         <h3>PLACAR</h3>
+        <div class="teamscore" id="teamScore" style="display:none">
+          <div class="ts blue"><div class="tn">🔵 Azul</div><div class="tv" id="tsBlue">0</div></div>
+          <div class="ts red"><div class="tn">🔴 Vermelha</div><div class="tv" id="tsRed">0</div></div>
+        </div>
         <div id="board"></div>
       </div>
     </div>
@@ -150,7 +181,27 @@
 <script>
 const $ = s => document.querySelector(s);
 const socket = io();
-let ROOM = null, LETTERS = ["A","B","C","D"], curTime = 0, timerInt = null;
+let ROOM = null, LETTERS = ["A","B","C","D"], curTime = 0, timerInt = null, MODE = "solo";
+
+// ---- Áudio (Web Audio, sem arquivos) ----
+const Sfx = (()=>{
+  let ctx;
+  const ensure=()=>{ try{ if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)(); if(ctx.state==="suspended") ctx.resume(); }catch(e){} return ctx; };
+  const tone=(freq,dur,type="sine",gain=0.15,when=0)=>{ const c=ensure(); if(!c) return;
+    const o=c.createOscillator(), g=c.createGain(); o.type=type; o.frequency.value=freq;
+    o.connect(g); g.connect(c.destination); const t=c.currentTime+when;
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(gain,t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.03); };
+  return {
+    unlock:ensure,
+    tick(){ tone(880,0.08,"square",0.12); },
+    go(){ tone(523,0.1,"sine",0.15); tone(784,0.15,"sine",0.15,0.1); },
+    correct(){ tone(660,0.12,"sine",0.2); tone(990,0.18,"sine",0.2,0.12); },
+    wrong(){ tone(160,0.32,"sawtooth",0.22); },
+    timeup(){ tone(300,0.25,"square",0.18); tone(200,0.3,"square",0.18,0.12); }
+  };
+})();
+document.addEventListener("click", ()=>Sfx.unlock(), { once:true });
 
 function show(id){ document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on")); $("#"+id).classList.on=true; $("#"+id).classList.add("on"); }
 
@@ -170,19 +221,44 @@ socket.on("host:created", ({code, lanUrl, categories})=>{
   categories.forEach(c=>{ const o=document.createElement("option"); o.value=c; o.textContent=c; sel.appendChild(o); });
 });
 
+// ---- modo individual/equipes ----
+$("#modes").querySelectorAll(".chip").forEach(b=>{
+  b.onclick = ()=>{
+    $("#modes").querySelectorAll(".chip").forEach(x=>x.classList.remove("sel"));
+    b.classList.add("sel"); MODE=b.dataset.m; Sfx.unlock();
+    socket.emit("host:mode",{mode:MODE});
+  };
+});
+socket.on("room:mode", ({mode})=>{ MODE=mode; });
+
 // ---- lista de jogadores ----
-socket.on("room:players", ({players})=>{
+socket.on("room:players", ({players, mode})=>{
+  if(mode) MODE=mode;
   const online = players.filter(p=>p.online);
-  const box = $("#lobbyPlayers"); box.innerHTML = "";
-  players.forEach(p=>{ const d=document.createElement("div"); d.className="pill"+(p.online?"":" off"); d.textContent=p.name; box.appendChild(d); });
+  const isTeam = MODE==="team";
+  $("#lobbyPlayers").style.display = isTeam ? "none" : "flex";
+  $("#lobbyTeams").style.display = isTeam ? "flex" : "none";
+  $("#teamScore").style.display = isTeam ? "flex" : "none";
+
+  if(isTeam){
+    const fill=(el,arr)=>{ el.innerHTML=""; arr.forEach(p=>{ const d=document.createElement("div");
+      d.className="pill"+(p.online?"":" off"); d.style.margin="4px 0"; d.textContent=p.name; el.appendChild(d); }); };
+    fill($("#teamBlueList"), players.filter(p=>p.team==="blue"));
+    fill($("#teamRedList"), players.filter(p=>p.team==="red"));
+    const t=teamTotals(players); $("#tsBlue").textContent=t.blue; $("#tsRed").textContent=t.red;
+  } else {
+    const box = $("#lobbyPlayers"); box.innerHTML = "";
+    players.forEach(p=>{ const d=document.createElement("div"); d.className="pill"+(p.online?"":" off"); d.textContent=p.name; box.appendChild(d); });
+  }
   $("#startBtn").disabled = online.length < 2;
   $("#lobbyHint").textContent = online.length < 2 ? "Precisa de pelo menos 2 jogadores conectados." : online.length+" jogadores prontos!";
   renderBoard($("#board"), players);
 });
+function teamTotals(players){ let blue=0,red=0; players.forEach(p=>{ if(p.team==="blue")blue+=p.score; else if(p.team==="red")red+=p.score; }); return {blue,red}; }
 
-$("#startBtn").onclick = ()=> socket.emit("host:start", {
+$("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); socket.emit("host:start", {
   category: $("#setCat").value, count: $("#setCount").value, time: $("#setTime").value
-});
+}); };
 $("#nextBtn").onclick = ()=> socket.emit("host:next");
 $("#restartBtn").onclick = ()=> socket.emit("host:restart");
 $("#againBtn").onclick = ()=> socket.emit("host:restart");
@@ -209,28 +285,50 @@ socket.on("game:question", ({index,total,category,question,options,time})=>{
 // ---- alguém errou (3+ jogadores): reabre ----
 socket.on("game:reopen", ({wrongPlayer})=>{
   setStatus("bad", `❌ ${wrongPlayer.name} errou! Liberado para os outros…`);
+  Sfx.wrong();
 });
 
 // ---- resultado ----
-socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWrong, scores})=>{
+socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWrong, scores, teamScores, mode})=>{
   stopTimer();
   document.querySelectorAll("#opts .opt").forEach(o=>{
     if(+o.dataset.k===correctIndex) o.classList.add("right"); else o.classList.add("dim");
   });
-  if(timeout) setStatus("neutral","⏱ Tempo esgotado! Ninguém pontuou.");
-  else if(awardedTo && wrongPlayer) setStatus("good", `❌ ${wrongPlayer.name} errou — ponto para ${awardedTo.name}! ✅`);
-  else if(awardedTo) setStatus("good", `✅ ${awardedTo.name} acertou!`);
-  else if(allWrong) setStatus("bad","Ninguém acertou desta vez.");
+  const isTeam = (mode||MODE)==="team";
+  const who = t => t==="blue" ? "time Azul 🔵" : "time Vermelha 🔴";
+  if(timeout){ setStatus("neutral","⏱ Tempo esgotado! Ninguém pontuou."); Sfx.timeup(); }
+  else if(awardedTo && wrongPlayer){
+    const alvo = isTeam ? who(awardedTo.team) : awardedTo.name;
+    setStatus("good", `❌ ${wrongPlayer.name} errou — ponto para ${alvo}! ✅`); Sfx.wrong(); setTimeout(()=>Sfx.correct(),350);
+  }
+  else if(awardedTo){
+    const alvo = isTeam ? who(awardedTo.team) : awardedTo.name;
+    setStatus("good", `✅ ${awardedTo.name} acertou — ponto para ${alvo}!`); Sfx.correct();
+  }
+  else if(allWrong){ setStatus("bad","Ninguém acertou desta vez."); Sfx.wrong(); }
   else setStatus("neutral","");
   renderBoard($("#board"), scores);
+  if(isTeam && teamScores){ $("#tsBlue").textContent=teamScores.blue; $("#tsRed").textContent=teamScores.red; }
 });
 
-socket.on("game:over", ({scores})=>{
+socket.on("game:over", ({scores, teamScores, mode})=>{
   show("over");
+  if((mode||MODE)==="team" && teamScores){
+    const {blue,red}=teamScores;
+    if(blue>red) $("#winner").textContent="🔵 Time Azul venceu! 🏆";
+    else if(red>blue) $("#winner").textContent="🔴 Time Vermelha venceu! 🏆";
+    else $("#winner").textContent="Empate! 🤝";
+    $("#finalBoard").innerHTML =
+      `<div class="row lead"><span>🔵 Azul</span><span class="s">${blue}</span></div>`+
+      `<div class="row lead"><span>🔴 Vermelha</span><span class="s">${red}</span></div>`;
+    Sfx.correct();
+    return;
+  }
   const top = scores[0];
   const tie = scores.length>1 && scores[1] && scores[1].score===top.score;
   $("#winner").textContent = tie ? "Empate! 🤝" : `🏆 ${top? top.name : "-"} venceu!`;
   renderBoard($("#finalBoard"), scores, true);
+  Sfx.correct();
 });
 
 socket.on("room:closed", ()=>{ /* host fechou */ });
@@ -255,6 +353,7 @@ function startTimer(time){
   timerInt=setInterval(()=>{
     curTime--; const pct=Math.max(curTime,0)/time*100;
     fill.style.width=pct+"%"; fill.classList.toggle("warn", curTime<=Math.max(time*0.35,4));
+    if(curTime<=3 && curTime>0) Sfx.tick();
     if(curTime<=0) stopTimer();
   },1000);
 }
