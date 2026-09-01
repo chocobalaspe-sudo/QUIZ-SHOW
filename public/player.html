@@ -45,21 +45,31 @@
     padding:5px 14px;border-radius:999px;margin-bottom:10px}
   .q{font-family:"Space Grotesk";font-weight:600;font-size:1.35rem;line-height:1.3;text-align:center;margin-bottom:16px}
   .opts{display:flex;flex-direction:column;gap:12px;margin-top:auto}
-  .opt{display:flex;align-items:center;gap:14px;border:none;cursor:pointer;text-align:left;color:#fff;
-    font-size:1.15rem;font-weight:600;font-family:inherit;border-radius:16px;padding:18px 16px;transition:transform .1s, filter .15s}
+  .opt{display:flex;align-items:center;gap:14px;border:2px solid rgba(255,255,255,.55);cursor:pointer;text-align:left;
+    color:#fff;background:#141018;font-size:1.15rem;font-weight:600;font-family:inherit;border-radius:16px;padding:18px 16px;
+    transition:transform .1s, filter .15s}
   .opt:active{transform:scale(.98)}
-  .opt[data-k="0"]{background:var(--a)} .opt[data-k="1"]{background:var(--b)}
-  .opt[data-k="2"]{background:var(--c)} .opt[data-k="3"]{background:var(--d)}
-  .opt .tag{flex:0 0 34px;height:34px;display:grid;place-items:center;border-radius:9px;background:rgba(0,0,0,.22);
+  .opt .tag{flex:0 0 34px;height:34px;display:grid;place-items:center;border-radius:9px;background:#fff;color:#141018;
     font-family:"Space Grotesk";font-weight:700}
   .opts.locked .opt{cursor:default}
-  .opt.dim{filter:grayscale(.7) brightness(.55);opacity:.5}
-  .opt.right{outline:4px solid #fff;box-shadow:0 0 0 4px var(--d)}
-  .opt.mine-wrong{outline:4px solid #fff;box-shadow:0 0 0 4px var(--a)}
+  .opt.dim{filter:brightness(.5);opacity:.5}
+  .opt.right{background:#fff;color:#141018;border-color:#fff}
+  .opt.right .tag{background:#141018;color:#fff}
+  .opt.mine-wrong{border-color:#fff;border-style:dashed}
   .banner{text-align:center;font-family:"Space Grotesk";font-weight:600;font-size:1.1rem;margin:14px 0;min-height:1.4em}
   .banner.good{color:var(--d)} .banner.bad{color:var(--a)} .banner.neutral{color:var(--gold)}
 
   .center{margin:auto;text-align:center}
+
+  /* escolha de time */
+  .teamPick{display:flex;gap:12px;margin:20px 0}
+  .tbtn{flex:1;border:3px solid transparent;cursor:pointer;font-family:"Space Grotesk";font-weight:700;
+    font-size:1.15rem;color:#fff;padding:22px 10px;border-radius:18px;opacity:.75;transition:.15s}
+  .tbtn.blue{background:#3a86ff} .tbtn.red{background:#e8505b}
+  .tbtn.sel{opacity:1;border-color:#fff;transform:translateY(-2px)}
+  .myteam{font-family:"Space Grotesk";font-weight:700;font-size:.85rem;padding:4px 12px;border-radius:999px}
+  .myteam.blue{background:rgba(58,134,255,.25);color:#7cb0ff}
+  .myteam.red{background:rgba(232,80,91,.25);color:#ff8b93}
 </style>
 </head>
 <body>
@@ -87,6 +97,10 @@
   <div class="wait">
     <div class="kicker">VOCÊ ESTÁ DENTRO ✔</div>
     <h1 id="wMsg">Aguardando o host…</h1>
+    <div id="teamPick" class="teamPick" style="display:none">
+      <button class="tbtn blue" data-team="blue">🔵 Azul</button>
+      <button class="tbtn red" data-team="red">🔴 Vermelha</button>
+    </div>
     <div class="dots">● ● ●</div>
   </div>
 </section>
@@ -95,7 +109,8 @@
 <section id="play" class="screen">
   <div class="phead">
     <span class="me" id="pName">—</span>
-    <span><span class="rank" id="pRank"></span> <span class="myscore" id="pScore">★ 0</span></span>
+    <span><span class="myteam" id="pTeam" style="display:none"></span>
+      <span class="rank" id="pRank"></span> <span class="myscore" id="pScore">★ 0</span></span>
   </div>
   <span class="cat" id="cat">Tema</span>
   <div class="q" id="q">…</div>
@@ -117,7 +132,21 @@
 <script>
 const $ = s => document.querySelector(s);
 const socket = io();
-let ME=null, MYNAME="", LETTERS=["A","B","C","D"], answered=false;
+let ME=null, MYNAME="", LETTERS=["A","B","C","D"], answered=false, MODE="solo", MYTEAM=null;
+
+// ---- Áudio ----
+const Sfx = (()=>{
+  let ctx;
+  const ensure=()=>{ try{ if(!ctx) ctx=new (window.AudioContext||window.webkitAudioContext)(); if(ctx.state==="suspended") ctx.resume(); }catch(e){} return ctx; };
+  const tone=(f,d,t="sine",g=0.15,w=0)=>{ const c=ensure(); if(!c) return; const o=c.createOscillator(),ga=c.createGain();
+    o.type=t;o.frequency.value=f;o.connect(ga);ga.connect(c.destination);const s=c.currentTime+w;
+    ga.gain.setValueAtTime(0.0001,s);ga.gain.exponentialRampToValueAtTime(g,s+0.01);
+    ga.gain.exponentialRampToValueAtTime(0.0001,s+d);o.start(s);o.stop(s+d+0.03); };
+  return { unlock:ensure,
+    correct(){ tone(660,0.12,"sine",0.2); tone(990,0.18,"sine",0.2,0.12); },
+    wrong(){ tone(160,0.3,"sawtooth",0.22); },
+    tap(){ tone(520,0.05,"square",0.1); } };
+})();
 
 function show(id){ document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on")); $("#"+id).classList.add("on"); }
 
@@ -128,6 +157,7 @@ if(roomParam){ $("#code").value = roomParam.toUpperCase(); }
 $("#joinBtn").onclick = join;
 $("#name").addEventListener("keydown", e=>{ if(e.key==="Enter") join(); });
 function join(){
+  Sfx.unlock();
   const code=$("#code").value.trim().toUpperCase(), name=$("#name").value.trim();
   if(code.length<4){ $("#err").textContent="Digite o código de 4 letras."; return; }
   if(!name){ $("#err").textContent="Digite seu nome."; return; }
@@ -135,20 +165,42 @@ function join(){
   socket.emit("player:join",{code,name},(res)=>{
     $("#joinBtn").disabled=false;
     if(!res||!res.ok){ $("#err").textContent=(res&&res.error)||"Erro ao entrar."; return; }
-    ME=res.playerId; MYNAME=res.name;
+    ME=res.playerId; MYNAME=res.name; MODE=res.mode||"solo";
     $("#wName").textContent=MYNAME; $("#pName").textContent=MYNAME;
-    show(res.state==="playing" ? "wait" : "wait");
+    updateTeamPick();
+    show("wait");
   });
 }
 
+// escolha de time
+document.querySelectorAll("#teamPick .tbtn").forEach(b=>{
+  b.onclick=()=>{ Sfx.tap(); socket.emit("player:team",{team:b.dataset.team}); };
+});
+socket.on("room:mode", ({mode})=>{ MODE=mode; updateTeamPick(); });
+function updateTeamPick(){
+  const show = MODE==="team";
+  $("#teamPick").style.display = show ? "flex" : "none";
+  if(show) $("#wMsg").textContent = MYTEAM ? "Time escolhido! Aguarde…" : "Escolha seu time 👇";
+  else $("#wMsg").textContent = "Aguardando o host…";
+  document.querySelectorAll("#teamPick .tbtn").forEach(b=>b.classList.toggle("sel", b.dataset.team===MYTEAM));
+}
+
 // placar / meu ranking
-socket.on("room:players", ({players})=>{
+socket.on("room:players", ({players, mode})=>{
+  if(mode) MODE=mode;
   const me = players.find(p=>p.id===ME);
+  if(me){ MYTEAM = me.team || MYTEAM; }
   const sorted=[...players].sort((a,b)=>b.score-a.score);
   const pos = me ? sorted.findIndex(p=>p.id===ME)+1 : 0;
   const sc = me? me.score : 0;
   $("#wScore").textContent="★ "+sc; $("#pScore").textContent="★ "+sc; $("#overScore").textContent="★ "+sc;
   if(pos){ $("#pRank").textContent = pos+"º de "+players.length; }
+  // selo do time
+  const badge=$("#pTeam");
+  if(MODE==="team" && MYTEAM){ badge.style.display="inline-block"; badge.className="myteam "+MYTEAM;
+    badge.textContent = MYTEAM==="blue"?"🔵 Azul":"🔴 Vermelha"; }
+  else badge.style.display="none";
+  updateTeamPick();
 });
 
 socket.on("game:start", ()=>{ /* espera a primeira pergunta */ });
@@ -171,7 +223,7 @@ socket.on("game:question", ({category,question,options})=>{
 
 function choose(k){
   if(answered) return;
-  answered=true;
+  answered=true; Sfx.tap();
   $("#opts").classList.add("locked");
   // trava localmente na hora (o servidor decide quem foi o primeiro)
   document.querySelectorAll("#opts .opt").forEach(o=>{ if(+o.dataset.k!==k) o.classList.add("dim"); });
@@ -191,28 +243,42 @@ socket.on("game:reopen", ({wrongPlayer, lockedOut})=>{
 });
 
 // resultado
-socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWrong})=>{
+socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWrong, mode})=>{
   $("#opts").classList.add("locked");
   document.querySelectorAll("#opts .opt").forEach(o=>{
     if(+o.dataset.k===correctIndex) o.classList.add("right"); else o.classList.add("dim");
   });
+  const isTeam=(mode||MODE)==="team";
+  const teamName = t => t==="blue" ? "time Azul 🔵" : "time Vermelha 🔴";
   const iWon = awardedTo && awardedTo.id===ME;
   const iLost = wrongPlayer && wrongPlayer.id===ME;
-  if(iWon && wrongPlayer) banner("good","✅ Ponto seu! (oponente errou)");
-  else if(iWon) banner("good","✅ Você acertou! +1");
-  else if(iLost && awardedTo) banner("bad","❌ Você errou — ponto para "+awardedTo.name);
-  else if(iLost) banner("bad","❌ Você errou.");
-  else if(timeout) banner("neutral","⏱ Tempo esgotado.");
-  else if(awardedTo) banner("neutral","✅ "+awardedTo.name+" pontuou.");
+  const myTeamScored = isTeam && awardedTo && awardedTo.team && awardedTo.team===MYTEAM;
+
+  if(iWon && wrongPlayer){ banner("good", isTeam?"✅ Ponto para o seu "+teamName(MYTEAM)+"!":"✅ Ponto seu! (oponente errou)"); Sfx.correct(); }
+  else if(iWon){ banner("good","✅ Você acertou! "+(isTeam?"+1 para o "+teamName(MYTEAM):"+1")); Sfx.correct(); }
+  else if(iLost && awardedTo){ banner("bad","❌ Você errou — ponto para "+(isTeam?teamName(awardedTo.team):awardedTo.name)); Sfx.wrong(); }
+  else if(iLost){ banner("bad","❌ Você errou."); Sfx.wrong(); }
+  else if(timeout){ banner("neutral","⏱ Tempo esgotado."); }
+  else if(myTeamScored){ banner("good","✅ Seu "+teamName(MYTEAM)+" pontuou!"); Sfx.correct(); }
+  else if(awardedTo){ banner("neutral","✅ "+(isTeam?teamName(awardedTo.team):awardedTo.name)+" pontuou."); }
   else banner("neutral","Ninguém acertou.");
 });
 
-socket.on("game:over", ({scores})=>{
+socket.on("game:over", ({scores, teamScores, mode})=>{
   show("over");
+  if((mode||MODE)==="team" && teamScores){
+    const {blue,red}=teamScores;
+    const myWon = (MYTEAM==="blue"&&blue>red)||(MYTEAM==="red"&&red>blue);
+    const tie = blue===red;
+    $("#overMsg").textContent = tie ? "Empate! 🤝" : (myWon ? "🏆 Seu time venceu!" : "Seu time perdeu 😕");
+    $("#overRank").textContent = `🔵 Azul ${blue}  ×  ${red} Vermelha 🔴`;
+    myWon ? Sfx.correct() : (tie ? null : Sfx.wrong());
+    return;
+  }
   const sorted=[...scores].sort((a,b)=>b.score-a.score);
   const pos=sorted.findIndex(p=>p.id===ME)+1;
   const top=sorted[0];
-  if(top && top.id===ME) $("#overMsg").textContent="🏆 Você venceu!";
+  if(top && top.id===ME){ $("#overMsg").textContent="🏆 Você venceu!"; Sfx.correct(); }
   else $("#overMsg").textContent="Fim! Você ficou em "+(pos||"-")+"º";
   $("#overRank").textContent = pos ? (pos+"º lugar de "+sorted.length) : "";
 });
