@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Quiz Show — Jogador</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--a:#e8505b;--b:#3a86ff;--c:#f6a609;--d:#2fbf71;--gold:#ffd166;
+    --ink:#f5f2ff;--soft:#c4bce6;--dim:#8f86bd;--line:rgba(255,255,255,.12)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:"Inter",system-ui,sans-serif;color:var(--ink);min-height:100dvh;padding:16px;
+    background:radial-gradient(800px 500px at 80% -10%,#4a2a7a,transparent 55%),
+      linear-gradient(160deg,#241b4a,#1b1440);display:flex;flex-direction:column}
+  .screen{display:none;flex:1;flex-direction:column} .screen.on{display:flex}
+  h1{font-family:"Space Grotesk";font-weight:700;font-size:1.9rem;text-align:center}
+  .kicker{color:var(--gold);font-family:"Space Grotesk";font-weight:600;letter-spacing:1px;text-align:center;margin-bottom:8px}
+
+  /* JOIN */
+  .join{margin:auto;width:100%;max-width:420px;text-align:center}
+  .field{margin:14px 0;text-align:left}
+  .field label{font-size:.8rem;color:var(--dim);font-family:"Space Grotesk";display:block;margin-bottom:6px}
+  input{width:100%;background:rgba(255,255,255,.08);border:2px solid var(--line);border-radius:14px;
+    padding:15px;color:var(--ink);font-family:inherit;font-size:1.1rem;font-weight:600}
+  input:focus{outline:none;border-color:var(--gold)}
+  #code{text-transform:uppercase;letter-spacing:6px;text-align:center;font-family:"Space Grotesk"}
+  .btn{width:100%;border:none;cursor:pointer;font-family:"Space Grotesk";font-weight:700;font-size:1.2rem;
+    color:#241245;background:var(--gold);padding:17px;border-radius:15px;margin-top:8px}
+  .btn:disabled{opacity:.5}
+  .err{color:var(--a);margin-top:10px;font-size:.9rem;min-height:1.2em}
+
+  /* HEADER do jogo */
+  .phead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .me{font-family:"Space Grotesk";font-weight:600}
+  .myscore{font-family:"Space Grotesk";font-weight:700;color:var(--gold);font-size:1.3rem}
+  .rank{color:var(--dim);font-size:.85rem}
+
+  /* WAIT */
+  .wait{margin:auto;text-align:center}
+  .dots{font-size:2rem;letter-spacing:4px;color:var(--gold);animation:blink 1.2s infinite}
+  @keyframes blink{0%,100%{opacity:.3}50%{opacity:1}}
+
+  /* QUESTION */
+  .cat{align-self:center;font-size:.8rem;font-weight:700;color:#241b4a;background:var(--soft);
+    padding:5px 14px;border-radius:999px;margin-bottom:10px}
+  .q{font-family:"Space Grotesk";font-weight:600;font-size:1.35rem;line-height:1.3;text-align:center;margin-bottom:16px}
+  .opts{display:flex;flex-direction:column;gap:12px;margin-top:auto}
+  .opt{display:flex;align-items:center;gap:14px;border:none;cursor:pointer;text-align:left;color:#fff;
+    font-size:1.15rem;font-weight:600;font-family:inherit;border-radius:16px;padding:18px 16px;transition:transform .1s, filter .15s}
+  .opt:active{transform:scale(.98)}
+  .opt[data-k="0"]{background:var(--a)} .opt[data-k="1"]{background:var(--b)}
+  .opt[data-k="2"]{background:var(--c)} .opt[data-k="3"]{background:var(--d)}
+  .opt .tag{flex:0 0 34px;height:34px;display:grid;place-items:center;border-radius:9px;background:rgba(0,0,0,.22);
+    font-family:"Space Grotesk";font-weight:700}
+  .opts.locked .opt{cursor:default}
+  .opt.dim{filter:grayscale(.7) brightness(.55);opacity:.5}
+  .opt.right{outline:4px solid #fff;box-shadow:0 0 0 4px var(--d)}
+  .opt.mine-wrong{outline:4px solid #fff;box-shadow:0 0 0 4px var(--a)}
+  .banner{text-align:center;font-family:"Space Grotesk";font-weight:600;font-size:1.1rem;margin:14px 0;min-height:1.4em}
+  .banner.good{color:var(--d)} .banner.bad{color:var(--a)} .banner.neutral{color:var(--gold)}
+
+  .center{margin:auto;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- JOIN -->
+<section id="join" class="screen on">
+  <div class="join">
+    <div class="kicker">◆ QUIZ SHOW ◆</div>
+    <h1>Entrar no jogo</h1>
+    <div class="field"><label>Código da sala</label>
+      <input id="code" maxlength="4" placeholder="XXXX" autocomplete="off"></div>
+    <div class="field"><label>Seu nome</label>
+      <input id="name" maxlength="16" placeholder="Seu apelido" autocomplete="off"></div>
+    <button class="btn" id="joinBtn">Entrar ▶</button>
+    <div class="err" id="err"></div>
+  </div>
+</section>
+
+<!-- WAIT -->
+<section id="wait" class="screen">
+  <div class="phead">
+    <span class="me" id="wName">—</span>
+    <span class="myscore" id="wScore">★ 0</span>
+  </div>
+  <div class="wait">
+    <div class="kicker">VOCÊ ESTÁ DENTRO ✔</div>
+    <h1 id="wMsg">Aguardando o host…</h1>
+    <div class="dots">● ● ●</div>
+  </div>
+</section>
+
+<!-- QUESTION -->
+<section id="play" class="screen">
+  <div class="phead">
+    <span class="me" id="pName">—</span>
+    <span><span class="rank" id="pRank"></span> <span class="myscore" id="pScore">★ 0</span></span>
+  </div>
+  <span class="cat" id="cat">Tema</span>
+  <div class="q" id="q">…</div>
+  <div class="banner neutral" id="banner">Clique primeiro para travar!</div>
+  <div class="opts" id="opts"></div>
+</section>
+
+<!-- OVER -->
+<section id="over" class="screen">
+  <div class="center">
+    <div class="kicker">FIM DE JOGO</div>
+    <h1 id="overMsg">🏆</h1>
+    <div class="myscore" id="overScore" style="font-size:2rem;margin-top:12px">★ 0</div>
+    <p class="rank" id="overRank" style="margin-top:8px"></p>
+  </div>
+</section>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const socket = io();
+let ME=null, MYNAME="", LETTERS=["A","B","C","D"], answered=false;
+
+function show(id){ document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on")); $("#"+id).classList.add("on"); }
+
+// pré-preenche o código vindo do QR
+const roomParam = new URLSearchParams(location.search).get("room");
+if(roomParam){ $("#code").value = roomParam.toUpperCase(); }
+
+$("#joinBtn").onclick = join;
+$("#name").addEventListener("keydown", e=>{ if(e.key==="Enter") join(); });
+function join(){
+  const code=$("#code").value.trim().toUpperCase(), name=$("#name").value.trim();
+  if(code.length<4){ $("#err").textContent="Digite o código de 4 letras."; return; }
+  if(!name){ $("#err").textContent="Digite seu nome."; return; }
+  $("#joinBtn").disabled=true; $("#err").textContent="";
+  socket.emit("player:join",{code,name},(res)=>{
+    $("#joinBtn").disabled=false;
+    if(!res||!res.ok){ $("#err").textContent=(res&&res.error)||"Erro ao entrar."; return; }
+    ME=res.playerId; MYNAME=res.name;
+    $("#wName").textContent=MYNAME; $("#pName").textContent=MYNAME;
+    show(res.state==="playing" ? "wait" : "wait");
+  });
+}
+
+// placar / meu ranking
+socket.on("room:players", ({players})=>{
+  const me = players.find(p=>p.id===ME);
+  const sorted=[...players].sort((a,b)=>b.score-a.score);
+  const pos = me ? sorted.findIndex(p=>p.id===ME)+1 : 0;
+  const sc = me? me.score : 0;
+  $("#wScore").textContent="★ "+sc; $("#pScore").textContent="★ "+sc; $("#overScore").textContent="★ "+sc;
+  if(pos){ $("#pRank").textContent = pos+"º de "+players.length; }
+});
+
+socket.on("game:start", ()=>{ /* espera a primeira pergunta */ });
+socket.on("game:lobby", ()=>{ show("wait"); $("#wMsg").textContent="Aguardando o host…"; });
+
+// nova pergunta
+socket.on("game:question", ({category,question,options})=>{
+  answered=false;
+  show("play");
+  $("#cat").textContent=category; $("#q").textContent=question;
+  banner("neutral","Clique primeiro para travar!");
+  const box=$("#opts"); box.className="opts"; box.innerHTML="";
+  options.forEach((t,k)=>{
+    const b=document.createElement("button"); b.className="opt"; b.dataset.k=k;
+    b.innerHTML=`<span class="tag">${LETTERS[k]}</span><span>${t}</span>`;
+    b.onclick=()=>choose(k);
+    box.appendChild(b);
+  });
+});
+
+function choose(k){
+  if(answered) return;
+  answered=true;
+  $("#opts").classList.add("locked");
+  // trava localmente na hora (o servidor decide quem foi o primeiro)
+  document.querySelectorAll("#opts .opt").forEach(o=>{ if(+o.dataset.k!==k) o.classList.add("dim"); });
+  banner("neutral","Enviado! Aguarde…");
+  socket.emit("player:answer",{optionIndex:k});
+}
+
+// 3+ jogadores: alguém errou e reabriu para os demais
+socket.on("game:reopen", ({wrongPlayer, lockedOut})=>{
+  const iAmOut = lockedOut.includes(ME);
+  if(iAmOut){
+    banner("bad","Você errou. Aguarde os outros…");
+  } else if(!answered){
+    // continua liberado para mim
+    banner("good","⚡ "+wrongPlayer.name+" errou — sua vez, rápido!");
+  }
+});
+
+// resultado
+socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWrong})=>{
+  $("#opts").classList.add("locked");
+  document.querySelectorAll("#opts .opt").forEach(o=>{
+    if(+o.dataset.k===correctIndex) o.classList.add("right"); else o.classList.add("dim");
+  });
+  const iWon = awardedTo && awardedTo.id===ME;
+  const iLost = wrongPlayer && wrongPlayer.id===ME;
+  if(iWon && wrongPlayer) banner("good","✅ Ponto seu! (oponente errou)");
+  else if(iWon) banner("good","✅ Você acertou! +1");
+  else if(iLost && awardedTo) banner("bad","❌ Você errou — ponto para "+awardedTo.name);
+  else if(iLost) banner("bad","❌ Você errou.");
+  else if(timeout) banner("neutral","⏱ Tempo esgotado.");
+  else if(awardedTo) banner("neutral","✅ "+awardedTo.name+" pontuou.");
+  else banner("neutral","Ninguém acertou.");
+});
+
+socket.on("game:over", ({scores})=>{
+  show("over");
+  const sorted=[...scores].sort((a,b)=>b.score-a.score);
+  const pos=sorted.findIndex(p=>p.id===ME)+1;
+  const top=sorted[0];
+  if(top && top.id===ME) $("#overMsg").textContent="🏆 Você venceu!";
+  else $("#overMsg").textContent="Fim! Você ficou em "+(pos||"-")+"º";
+  $("#overRank").textContent = pos ? (pos+"º lugar de "+sorted.length) : "";
+});
+
+socket.on("room:closed", ()=>{
+  show("join"); $("#err").textContent="O host encerrou a sala.";
+});
+
+function banner(kind,text){ const b=$("#banner"); b.className="banner "+kind; b.textContent=text; }
+</script>
+</body>
+</html>

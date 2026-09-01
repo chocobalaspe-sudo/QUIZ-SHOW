@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz Show</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Inter",system-ui,sans-serif;color:#f5f2ff;min-height:100dvh;display:grid;
+    place-items:center;padding:20px;text-align:center;
+    background:radial-gradient(1000px 600px at 80% -10%,#4a2a7a,transparent 55%),
+      linear-gradient(160deg,#241b4a,#1b1440)}
+  h1{font-family:"Space Grotesk";font-size:2.6rem;margin-bottom:6px}
+  .kicker{color:#ffd166;font-family:"Space Grotesk";font-weight:600;letter-spacing:1px;margin-bottom:16px}
+  p{color:#c4bce6;margin-bottom:28px}
+  .cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+  a.card{display:block;text-decoration:none;color:#241245;background:#ffd166;font-family:"Space Grotesk";
+    font-weight:700;font-size:1.2rem;padding:22px 30px;border-radius:18px;min-width:220px;
+    box-shadow:0 12px 28px -12px rgba(255,209,102,.6);transition:.18s}
+  a.card.alt{background:rgba(255,255,255,.08);color:#f5f2ff;border:1px solid rgba(255,255,255,.15)}
+  a.card:hover{transform:translateY(-3px)}
+  .sub{display:block;font-family:"Inter";font-weight:400;font-size:.85rem;margin-top:6px;opacity:.8}
+</style>
+</head>
+<body>
+  <div>
+    <div class="kicker">◆ QUIZ SHOW ◆</div>
+    <h1>Jogo de Perguntas</h1>
+    <p>519 perguntas • multiplayer pelo celular</p>
+    <div class="cards">
+      <a class="card" href="host.html">📺 Sou a TV<span class="sub">Exibir na tela grande</span></a>
+      <a class="card alt" href="player.html">📱 Sou jogador<span class="sub">Entrar com o celular</span></a>
+    </div>
+  </div>
+<script>
+  // Se veio pelo QR (?room=XXXX), vai direto para a tela do jogador
+  const room = new URLSearchParams(location.search).get("room");
+  if (room) location.replace("player.html?room=" + encodeURIComponent(room));
+</script>
+</body>
+</html>
