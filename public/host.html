@@ -267,12 +267,13 @@ let voiceMode = "full"; // "full" | "question" | "off"
 let ptVoice = null;
 function loadVoices(){ try{ const vs=speechSynthesis.getVoices(); ptVoice = vs.find(v=>/pt[-_]?br/i.test(v.lang)) || vs.find(v=>/^pt/i.test(v.lang)) || null; }catch(e){} }
 if("speechSynthesis" in window){ loadVoices(); try{ speechSynthesis.onvoiceschanged=loadVoices; }catch(e){} }
-function speak(text){
-  if(voiceMode==="off" || !("speechSynthesis" in window)) return;
+function speak(text, onend){
+  if(voiceMode==="off" || !("speechSynthesis" in window)){ if(onend) onend(); return; }
   try{ speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text); u.lang="pt-BR"; if(ptVoice) u.voice=ptVoice; u.rate=1.03;
+    if(onend){ u.onend=onend; u.onerror=onend; }
     speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){ if(onend) onend(); }
 }
 function stopSpeak(){ try{ if("speechSynthesis" in window) speechSynthesis.cancel(); }catch(e){} }
 function warmSpeech(){ if(voiceMode==="off"||!("speechSynthesis" in window)) return; try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){} }
@@ -342,6 +343,7 @@ socket.on("game:start", ()=> show("game"));
 socket.on("game:lobby", ()=> show("lobby"));
 
 // ---- nova pergunta ----
+let readingDoneSent = true;
 socket.on("game:question", ({index,total,category,question,options,time})=>{
   show("game");
   buzzWindow = time || 0;
@@ -354,13 +356,28 @@ socket.on("game:question", ({index,total,category,question,options,time})=>{
     d.innerHTML = `<span class="tag">${LETTERS[k]}</span><span>${t}</span>`;
     box.appendChild(d);
   });
-  setStatus("neutral","🔴 Aguardando alguém apertar o botão…");
-  startTimer(time);
+  stopTimer(); $("#fill").style.width="100%"; $("#fill").classList.remove("warn");
+
+  readingDoneSent = false;
+  const done = ()=>{ if(readingDoneSent) return; readingDoneSent=true; socket.emit("host:readingDone",{index}); };
   if(voiceMode!=="off"){
+    setStatus("neutral","🔊 Lendo a pergunta…");
     let text = question;
     if(voiceMode==="full"){ text += ". " + options.map((o,i)=>"Opção "+LETTERS[i]+": "+o).join(". "); }
-    speak(text);
+    speak(text, done);
+    // segurança: se o onend não disparar, libera após um tempo estimado
+    const est = Math.min(Math.max(text.length*70, 3500), 22000);
+    setTimeout(done, est);
+  } else {
+    setStatus("neutral","🔴 Aguardando alguém apertar o botão…");
+    done();
   }
+});
+
+// buzz liberado para todos (após a leitura)
+socket.on("game:buzzopen", ()=>{
+  setStatus("neutral","🔴 Aguardando alguém apertar o botão…");
+  startTimer(buzzWindow);
 });
 
 // ---- alguém apertou o botão ----
