@@ -85,6 +85,25 @@
   .myteam{font-family:"Space Grotesk";font-weight:700;font-size:.85rem;padding:4px 12px;border-radius:999px}
   .myteam.blue{background:rgba(58,134,255,.25);color:#7cb0ff}
   .myteam.red{background:rgba(232,80,91,.25);color:#ff8b93}
+
+  /* celular deitado (paisagem, pouca altura) */
+  @media (orientation:landscape) and (max-height:520px){
+    body{padding:10px}
+    h1{font-size:1.4rem}
+    .phead{margin-bottom:8px}
+    .cat{margin-bottom:6px}
+    .q{font-size:1.1rem;margin-bottom:8px}
+    .banner{font-size:.95rem;margin:8px 0}
+    .ptimer{height:10px;margin:2px 0 8px}
+    .buzz{font-size:1.3rem;padding:20px 12px;margin-top:6px}
+    .buzz br{display:none}
+    .opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+    .opt{padding:12px;font-size:1rem}
+    .opt .tag{flex-basis:30px;height:30px}
+    .teamPick{margin:12px 0} .tbtn{padding:16px 10px;font-size:1.05rem}
+    .field{margin:8px 0} input{padding:11px}
+    .dots{font-size:1.4rem}
+  }
 </style>
 </head>
 <body>
