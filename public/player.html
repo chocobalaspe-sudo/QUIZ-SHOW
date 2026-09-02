@@ -256,8 +256,15 @@ socket.on("game:question", ({category,question,options,answerTime})=>{
     box.appendChild(b);
   });
   stopLocalTimer();
+  const bb=$("#buzzBtn"); bb.style.display="block"; bb.disabled=true; bb.innerHTML="AGUARDE A<br>LEITURA…";
+  banner("neutral","🔊 Ouça a pergunta na TV…");
+});
+
+// leitura terminou → libera o botão
+socket.on("game:buzzopen", ()=>{
+  if(answered || amResponder) return;
   const bb=$("#buzzBtn"); bb.style.display="block"; bb.disabled=false; bb.innerHTML="APERTE PARA<br>RESPONDER";
-  banner("neutral","Aperte o botão e responda em "+ANSWER_T+"s!");
+  banner("good","✅ Pode apertar! Responda rápido!");
 });
 
 let ANSWER_T = 10;
