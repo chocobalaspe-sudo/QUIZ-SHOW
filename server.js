@@ -70,6 +70,7 @@ function roomCode() {
 }
 
 const ANSWER_TIME = 10; // segundos para responder depois de apertar o botão
+const MAX_READING = 30; // segurança: libera o buzz no máximo após esse tempo de leitura
 const P = p => ({ id: p.id, name: p.name, team: p.team || null });
 
 function shuffle(a) {
@@ -140,13 +141,14 @@ function sendQuestion(room) {
   const q = room.deck[room.qIndex];
   room.current = {
     correct: q.a,
-    phase: "buzz",        // "buzz" = esperando alguém apertar; "answer" = alguém respondendo
+    phase: "reading",     // "reading" = TV lendo; "buzz" = pode apertar; "answer" = respondendo
     responder: null,
     resolved: false,
     lockedOut: new Set(), // quem já errou/estourou o tempo nesta pergunta
   };
   clearTimeout(room.buzzTimer);
   clearTimeout(room.answerTimer);
+  clearTimeout(room.readingTimer);
 
   const payload = {
     index: room.qIndex + 1,
@@ -160,6 +162,18 @@ function sendQuestion(room) {
   io.to(room.code + ":host").emit("game:question", { ...payload, correct: q.a });
   io.to(room.code).emit("game:question", payload);
 
+  // o buzz só abre quando o host termina de ler (host:readingDone) — ou por segurança após MAX_READING
+  room.readingTimer = setTimeout(() => openBuzz(room), MAX_READING * 1000);
+}
+
+// libera o buzz para todos (chamado quando a leitura termina)
+function openBuzz(room) {
+  const cur = room.current;
+  if (!cur || cur.resolved || cur.phase !== "reading") return;
+  clearTimeout(room.readingTimer);
+  cur.phase = "buzz";
+  io.to(room.code).emit("game:buzzopen", {});
+  io.to(room.code + ":host").emit("game:buzzopen", {});
   startBuzzTimer(room);
 }
 
@@ -240,6 +254,7 @@ function resolve(room, { awardedTo, wrongPlayer, timeout, allWrong }) {
   cur.phase = "done";
   clearTimeout(room.buzzTimer);
   clearTimeout(room.answerTimer);
+  clearTimeout(room.readingTimer);
 
   const payload = {
     correctIndex: cur.correct,
@@ -273,7 +288,7 @@ io.on("connection", (socket) => {
       players: new Map(), state: "lobby", mode: "solo",
       deck: [], qIndex: -1, current: null,
       settings: { category: "Todos", count: 10, time: 20 },
-      buzzTimer: null, answerTimer: null, advanceHandle: null,
+      buzzTimer: null, answerTimer: null, readingTimer: null, advanceHandle: null,
     };
     rooms.set(code, room);
     socket.join(code + ":host");
@@ -301,11 +316,19 @@ io.on("connection", (socket) => {
     sendQuestion(room);
   });
 
+  // ---- HOST terminou de ler a pergunta em voz alta → libera o buzz ----
+  socket.on("host:readingDone", ({ index }) => {
+    const room = rooms.get(socket.data.hostRoom);
+    if (!room || !room.current || room.current.phase !== "reading") return;
+    if (Number(index) !== room.qIndex + 1) return; // ignora avisos de perguntas antigas
+    openBuzz(room);
+  });
+
   // ---- HOST pula para a próxima ----
   socket.on("host:next", () => {
     const room = rooms.get(socket.data.hostRoom);
     if (!room || room.state !== "playing") return;
-    clearTimeout(room.advanceHandle); clearTimeout(room.buzzTimer); clearTimeout(room.answerTimer);
+    clearTimeout(room.advanceHandle); clearTimeout(room.buzzTimer); clearTimeout(room.answerTimer); clearTimeout(room.readingTimer);
     sendQuestion(room);
   });
 
@@ -313,7 +336,7 @@ io.on("connection", (socket) => {
   socket.on("host:restart", () => {
     const room = rooms.get(socket.data.hostRoom);
     if (!room) return;
-    clearTimeout(room.advanceHandle); clearTimeout(room.buzzTimer); clearTimeout(room.answerTimer);
+    clearTimeout(room.advanceHandle); clearTimeout(room.buzzTimer); clearTimeout(room.answerTimer); clearTimeout(room.readingTimer);
     room.state = "lobby"; room.current = null; room.qIndex = -1;
     for (const p of room.players.values()) p.score = 0;
     io.to(room.code).emit("game:lobby", {});
@@ -380,7 +403,7 @@ io.on("connection", (socket) => {
     const hostCode = socket.data.hostRoom;
     if (hostCode && rooms.has(hostCode)) {
       const room = rooms.get(hostCode);
-      clearTimeout(room.advanceHandle); clearTimeout(room.buzzTimer); clearTimeout(room.answerTimer);
+      clearTimeout(room.advanceHandle); clearTimeout(room.buzzTimer); clearTimeout(room.answerTimer); clearTimeout(room.readingTimer);
       io.to(hostCode).emit("room:closed", {});
       rooms.delete(hostCode);
     }
