@@ -61,6 +61,16 @@
 
   .center{margin:auto;text-align:center}
 
+  /* botão grande de buzz + timer de resposta */
+  .buzz{width:100%;border:none;cursor:pointer;background:var(--gold);color:#241245;font-family:"Space Grotesk";
+    font-weight:700;font-size:1.7rem;padding:44px 16px;border-radius:24px;margin-top:auto;line-height:1.15;
+    box-shadow:0 16px 34px -12px rgba(255,209,102,.75);transition:transform .08s}
+  .buzz:active{transform:scale(.97)}
+  .buzz:disabled{opacity:.45;cursor:default;box-shadow:none}
+  .ptimer{height:12px;background:rgba(255,255,255,.12);border-radius:99px;overflow:hidden;margin:4px 0 14px}
+  .ptimerfill{height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#2fbf71,#ffd166);transition:width 1s linear}
+  .ptimer.warn .ptimerfill{background:linear-gradient(90deg,#f6a609,#e8505b)}
+
   /* escolha de time */
   .teamPick{display:flex;gap:12px;margin:20px 0}
   .tbtn{flex:1;border:3px solid transparent;cursor:pointer;font-family:"Space Grotesk";font-weight:700;
@@ -114,8 +124,10 @@
   </div>
   <span class="cat" id="cat">Tema</span>
   <div class="q" id="q">…</div>
-  <div class="banner neutral" id="banner">Clique primeiro para travar!</div>
-  <div class="opts" id="opts"></div>
+  <div class="banner neutral" id="banner">Aperte o botão para responder!</div>
+  <div id="pTimer" class="ptimer" style="display:none"><div id="pTimerFill" class="ptimerfill"></div></div>
+  <button id="buzzBtn" class="buzz">APERTE PARA<br>RESPONDER</button>
+  <div class="opts" id="opts" style="display:none"></div>
 </section>
 
 <!-- OVER -->
@@ -133,6 +145,7 @@
 const $ = s => document.querySelector(s);
 const socket = io();
 let ME=null, MYNAME="", LETTERS=["A","B","C","D"], answered=false, MODE="solo", MYTEAM=null;
+let amResponder=false, pInt=null;
 
 // ---- Áudio ----
 const Sfx = (()=>{
@@ -206,45 +219,83 @@ socket.on("room:players", ({players, mode})=>{
 socket.on("game:start", ()=>{ /* espera a primeira pergunta */ });
 socket.on("game:lobby", ()=>{ show("wait"); $("#wMsg").textContent="Aguardando o host…"; });
 
-// nova pergunta
-socket.on("game:question", ({category,question,options})=>{
-  answered=false;
+// nova pergunta → mostra o botão de buzz, esconde as opções
+socket.on("game:question", ({category,question,options,answerTime})=>{
+  answered=false; amResponder=false; ANSWER_T = answerTime||10;
   show("play");
   $("#cat").textContent=category; $("#q").textContent=question;
-  banner("neutral","Clique primeiro para travar!");
-  const box=$("#opts"); box.className="opts"; box.innerHTML="";
+  const box=$("#opts"); box.className="opts"; box.style.display="none"; box.innerHTML="";
   options.forEach((t,k)=>{
     const b=document.createElement("button"); b.className="opt"; b.dataset.k=k;
     b.innerHTML=`<span class="tag">${LETTERS[k]}</span><span>${t}</span>`;
     b.onclick=()=>choose(k);
     box.appendChild(b);
   });
+  stopLocalTimer();
+  const bb=$("#buzzBtn"); bb.style.display="block"; bb.disabled=false; bb.innerHTML="APERTE PARA<br>RESPONDER";
+  banner("neutral","Aperte o botão e responda em "+ANSWER_T+"s!");
+});
+
+let ANSWER_T = 10;
+$("#buzzBtn").onclick = buzz;
+function buzz(){
+  const bb=$("#buzzBtn");
+  if(bb.disabled) return;
+  Sfx.unlock(); Sfx.tap();
+  bb.disabled=true;
+  banner("neutral","⏳ Tentando travar…");
+  socket.emit("player:buzz");
+}
+
+// alguém travou a rodada
+socket.on("game:buzzed", ({by, answerTime})=>{
+  const t = answerTime||ANSWER_T;
+  if(by.id===ME){
+    amResponder=true;
+    $("#buzzBtn").style.display="none";
+    const box=$("#opts"); box.style.display="flex"; box.className="opts";
+    banner("good","⚡ Sua vez! Responda rápido!");
+    Sfx.tap();
+    startLocalTimer(t);
+  } else {
+    amResponder=false;
+    $("#buzzBtn").style.display="none";
+    $("#opts").style.display="none";
+    banner("neutral","🔒 "+by.name+" está respondendo…");
+    stopLocalTimer();
+  }
 });
 
 function choose(k){
-  if(answered) return;
-  answered=true; Sfx.tap();
+  if(!amResponder || answered) return;
+  answered=true; amResponder=false; Sfx.tap();
+  stopLocalTimer();
   $("#opts").classList.add("locked");
-  // trava localmente na hora (o servidor decide quem foi o primeiro)
   document.querySelectorAll("#opts .opt").forEach(o=>{ if(+o.dataset.k!==k) o.classList.add("dim"); });
   banner("neutral","Enviado! Aguarde…");
   socket.emit("player:answer",{optionIndex:k});
 }
 
-// 3+ jogadores: alguém errou e reabriu para os demais
-socket.on("game:reopen", ({wrongPlayer, lockedOut})=>{
+// erro/tempo esgotado: reabre para os outros
+socket.on("game:reopen", ({wrongPlayer, lockedOut, timedOut})=>{
+  stopLocalTimer(); answered=false; amResponder=false;
+  $("#opts").style.display="none";
   const iAmOut = lockedOut.includes(ME);
   if(iAmOut){
-    banner("bad","Você errou. Aguarde os outros…");
-  } else if(!answered){
-    // continua liberado para mim
-    banner("good","⚡ "+wrongPlayer.name+" errou — sua vez, rápido!");
+    $("#buzzBtn").style.display="none";
+    banner("bad", (timedOut&&wrongPlayer.id===ME?"⏱ Você não respondeu a tempo.":"❌ Você errou.")+" Aguarde os outros…");
+  } else {
+    const bb=$("#buzzBtn"); bb.style.display="block"; bb.disabled=false; bb.innerHTML="APERTE PARA<br>RESPONDER";
+    banner("good","⚡ Liberado! Aperte para responder!");
+    Sfx.tap();
   }
 });
 
 // resultado
 socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWrong, mode})=>{
-  $("#opts").classList.add("locked");
+  stopLocalTimer();
+  $("#buzzBtn").style.display="none";
+  const box=$("#opts"); box.style.display="flex"; box.classList.add("locked");
   document.querySelectorAll("#opts .opt").forEach(o=>{
     if(+o.dataset.k===correctIndex) o.classList.add("right"); else o.classList.add("dim");
   });
@@ -254,15 +305,28 @@ socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWro
   const iLost = wrongPlayer && wrongPlayer.id===ME;
   const myTeamScored = isTeam && awardedTo && awardedTo.team && awardedTo.team===MYTEAM;
 
-  if(iWon && wrongPlayer){ banner("good", isTeam?"✅ Ponto para o seu "+teamName(MYTEAM)+"!":"✅ Ponto seu! (oponente errou)"); Sfx.correct(); }
-  else if(iWon){ banner("good","✅ Você acertou! "+(isTeam?"+1 para o "+teamName(MYTEAM):"+1")); Sfx.correct(); }
+  if(iWon){ banner("good","✅ Você acertou! "+(isTeam?"+1 para o "+teamName(MYTEAM):"+1 ponto")); Sfx.correct(); }
   else if(iLost && awardedTo){ banner("bad","❌ Você errou — ponto para "+(isTeam?teamName(awardedTo.team):awardedTo.name)); Sfx.wrong(); }
-  else if(iLost){ banner("bad","❌ Você errou."); Sfx.wrong(); }
-  else if(timeout){ banner("neutral","⏱ Tempo esgotado."); }
+  else if(iLost){ banner("bad","❌ Não foi dessa vez."); Sfx.wrong(); }
+  else if(timeout){ banner("neutral","⏱ Ninguém apertou a tempo."); }
   else if(myTeamScored){ banner("good","✅ Seu "+teamName(MYTEAM)+" pontuou!"); Sfx.correct(); }
   else if(awardedTo){ banner("neutral","✅ "+(isTeam?teamName(awardedTo.team):awardedTo.name)+" pontuou."); }
   else banner("neutral","Ninguém acertou.");
 });
+
+// timer local de resposta (visual)
+function startLocalTimer(sec){
+  stopLocalTimer();
+  const wrap=$("#pTimer"), fill=$("#pTimerFill");
+  wrap.style.display="block"; wrap.classList.remove("warn"); fill.style.width="100%";
+  let t=sec;
+  pInt=setInterval(()=>{
+    t--; fill.style.width=Math.max(t,0)/sec*100+"%";
+    wrap.classList.toggle("warn", t<=4);
+    if(t<=0) stopLocalTimer();
+  },1000);
+}
+function stopLocalTimer(){ clearInterval(pInt); pInt=null; $("#pTimer").style.display="none"; }
 
 socket.on("game:over", ({scores, teamScores, mode})=>{
   show("over");
