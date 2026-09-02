@@ -163,6 +163,9 @@
           <div><label>Tempo</label>
             <select id="setTime"><option value="15">15s</option><option value="20" selected>20s</option>
               <option value="30">30s</option><option value="0">Sem limite</option></select></div>
+          <div><label>Voz (leitura)</label>
+            <select id="setVoice"><option value="full">Pergunta + opções</option>
+              <option value="question">Só a pergunta</option><option value="off">Desligada</option></select></div>
         </div>
         <div class="players" id="lobbyPlayers"></div>
         <div class="teamcols" id="lobbyTeams" style="display:none">
@@ -259,6 +262,21 @@ const Sfx = (()=>{
 })();
 document.addEventListener("click", ()=>Sfx.unlock(), { once:true });
 
+// ---- Voz (leitura das perguntas via Text-to-Speech do navegador) ----
+let voiceMode = "full"; // "full" | "question" | "off"
+let ptVoice = null;
+function loadVoices(){ try{ const vs=speechSynthesis.getVoices(); ptVoice = vs.find(v=>/pt[-_]?br/i.test(v.lang)) || vs.find(v=>/^pt/i.test(v.lang)) || null; }catch(e){} }
+if("speechSynthesis" in window){ loadVoices(); try{ speechSynthesis.onvoiceschanged=loadVoices; }catch(e){} }
+function speak(text){
+  if(voiceMode==="off" || !("speechSynthesis" in window)) return;
+  try{ speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text); u.lang="pt-BR"; if(ptVoice) u.voice=ptVoice; u.rate=1.03;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+function stopSpeak(){ try{ if("speechSynthesis" in window) speechSynthesis.cancel(); }catch(e){} }
+function warmSpeech(){ if(voiceMode==="off"||!("speechSynthesis" in window)) return; try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); }catch(e){} }
+
 function show(id){ document.querySelectorAll(".screen").forEach(s=>s.classList.remove("on")); $("#"+id).classList.on=true; $("#"+id).classList.add("on"); }
 
 // ---- criar sala ao abrir ----
@@ -312,12 +330,13 @@ socket.on("room:players", ({players, mode})=>{
 });
 function teamTotals(players){ let blue=0,red=0; players.forEach(p=>{ if(p.team==="blue")blue+=p.score; else if(p.team==="red")red+=p.score; }); return {blue,red}; }
 
-$("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); if(fsSupported()) goFullscreen(); socket.emit("host:start", {
+$("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); if(fsSupported()) goFullscreen(); voiceMode=$("#setVoice").value; warmSpeech(); socket.emit("host:start", {
   category: $("#setCat").value, count: $("#setCount").value, time: $("#setTime").value
 }); };
-$("#nextBtn").onclick = ()=> socket.emit("host:next");
-$("#restartBtn").onclick = ()=> socket.emit("host:restart");
-$("#againBtn").onclick = ()=> socket.emit("host:restart");
+$("#setVoice").onchange = ()=>{ voiceMode=$("#setVoice").value; if(voiceMode==="off") stopSpeak(); };
+$("#nextBtn").onclick = ()=>{ stopSpeak(); socket.emit("host:next"); };
+$("#restartBtn").onclick = ()=>{ stopSpeak(); socket.emit("host:restart"); };
+$("#againBtn").onclick = ()=>{ stopSpeak(); socket.emit("host:restart"); };
 
 socket.on("game:start", ()=> show("game"));
 socket.on("game:lobby", ()=> show("lobby"));
@@ -337,10 +356,16 @@ socket.on("game:question", ({index,total,category,question,options,time})=>{
   });
   setStatus("neutral","🔴 Aguardando alguém apertar o botão…");
   startTimer(time);
+  if(voiceMode!=="off"){
+    let text = question;
+    if(voiceMode==="full"){ text += ". " + options.map((o,i)=>"Opção "+LETTERS[i]+": "+o).join(". "); }
+    speak(text);
+  }
 });
 
 // ---- alguém apertou o botão ----
 socket.on("game:buzzed", ({by, answerTime})=>{
+  stopSpeak();
   const nm = by.name + (by.team ? (by.team==="blue"?" 🔵":" 🔴") : "");
   setStatus("neutral","⚡ "+nm+" travou! Respondendo… ("+answerTime+"s)");
   Sfx.tick();
@@ -357,6 +382,7 @@ socket.on("game:reopen", ({wrongPlayer, timedOut})=>{
 
 // ---- resultado ----
 socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWrong, scores, teamScores, mode})=>{
+  stopSpeak();
   stopTimer();
   document.querySelectorAll("#opts .opt").forEach(o=>{
     if(+o.dataset.k===correctIndex) o.classList.add("right"); else o.classList.add("dim");
@@ -379,6 +405,7 @@ socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWro
 });
 
 socket.on("game:over", ({scores, teamScores, mode})=>{
+  stopSpeak();
   show("over");
   if((mode||MODE)==="team" && teamScores){
     const {blue,red}=teamScores;
