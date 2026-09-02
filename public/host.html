@@ -87,6 +87,11 @@
   .ts.blue .tn{color:#7cb0ff} .ts.red .tn{color:#ff8b93}
   .ts .tv{font-family:"Space Grotesk";font-weight:700;font-size:2.4rem}
 
+  .fsbtn{position:fixed;top:14px;right:16px;z-index:60;border:1px solid var(--line);
+    background:rgba(255,255,255,.08);color:var(--soft);font-family:"Space Grotesk";font-weight:600;
+    font-size:.85rem;padding:9px 14px;border-radius:999px;cursor:pointer}
+  .fsbtn:hover{border-color:var(--gold);color:var(--ink)}
+
   /* ---- FIM ---- */
   .over{text-align:center;padding-top:5vh}
   .winner{font-family:"Space Grotesk";font-weight:700;font-size:3rem;color:var(--gold);margin:10px 0 24px}
@@ -96,6 +101,7 @@
 </head>
 <body>
 <div class="wrap">
+  <button id="fsBtn" class="fsbtn">⛶ Tela cheia</button>
 
   <!-- LOBBY -->
   <section id="lobby" class="screen on">
@@ -147,7 +153,7 @@
         <span class="cat" id="cat">Tema</span>
         <div class="q" id="q">…</div>
         <div class="opts" id="opts"></div>
-        <div class="status neutral" id="status">Quem clicar primeiro trava a rodada!</div>
+        <div class="status neutral" id="status">Aperte o botão no celular para responder!</div>
         <div class="controls">
           <button class="btn ghost" id="nextBtn">Próxima ⏭</button>
           <button class="btn ghost" id="restartBtn">Reiniciar ↺</button>
@@ -181,7 +187,17 @@
 <script>
 const $ = s => document.querySelector(s);
 const socket = io();
-let ROOM = null, LETTERS = ["A","B","C","D"], curTime = 0, timerInt = null, MODE = "solo";
+let ROOM = null, LETTERS = ["A","B","C","D"], curTime = 0, timerInt = null, MODE = "solo", buzzWindow = 0;
+
+// ---- Tela cheia ----
+function goFullscreen(){
+  const el=document.documentElement;
+  const req=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen;
+  if(req) try{ req.call(el); }catch(e){}
+}
+function exitFullscreen(){ const ex=document.exitFullscreen||document.webkitExitFullscreen; if(ex) try{ ex.call(document); }catch(e){} }
+$("#fsBtn").onclick = ()=>{ document.fullscreenElement ? exitFullscreen() : goFullscreen(); };
+document.addEventListener("fullscreenchange", ()=>{ $("#fsBtn").textContent = document.fullscreenElement ? "⛶ Sair" : "⛶ Tela cheia"; });
 
 // ---- Áudio (Web Audio, sem arquivos) ----
 const Sfx = (()=>{
@@ -256,7 +272,7 @@ socket.on("room:players", ({players, mode})=>{
 });
 function teamTotals(players){ let blue=0,red=0; players.forEach(p=>{ if(p.team==="blue")blue+=p.score; else if(p.team==="red")red+=p.score; }); return {blue,red}; }
 
-$("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); socket.emit("host:start", {
+$("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); goFullscreen(); socket.emit("host:start", {
   category: $("#setCat").value, count: $("#setCount").value, time: $("#setTime").value
 }); };
 $("#nextBtn").onclick = ()=> socket.emit("host:next");
@@ -269,6 +285,7 @@ socket.on("game:lobby", ()=> show("lobby"));
 // ---- nova pergunta ----
 socket.on("game:question", ({index,total,category,question,options,time})=>{
   show("game");
+  buzzWindow = time || 0;
   $("#counter").textContent = index+" / "+total;
   $("#cat").textContent = category;
   $("#q").textContent = question;
@@ -278,14 +295,24 @@ socket.on("game:question", ({index,total,category,question,options,time})=>{
     d.innerHTML = `<span class="tag">${LETTERS[k]}</span><span>${t}</span>`;
     box.appendChild(d);
   });
-  setStatus("neutral","Quem clicar primeiro trava a rodada!");
+  setStatus("neutral","🔴 Aguardando alguém apertar o botão…");
   startTimer(time);
 });
 
-// ---- alguém errou (3+ jogadores): reabre ----
-socket.on("game:reopen", ({wrongPlayer})=>{
-  setStatus("bad", `❌ ${wrongPlayer.name} errou! Liberado para os outros…`);
+// ---- alguém apertou o botão ----
+socket.on("game:buzzed", ({by, answerTime})=>{
+  const nm = by.name + (by.team ? (by.team==="blue"?" 🔵":" 🔴") : "");
+  setStatus("neutral","⚡ "+nm+" travou! Respondendo… ("+answerTime+"s)");
+  Sfx.tick();
+  startTimer(answerTime);
+});
+
+// ---- errou ou estourou o tempo: reabre para os outros ----
+socket.on("game:reopen", ({wrongPlayer, timedOut})=>{
+  const msg = timedOut ? `⏱ ${wrongPlayer.name} não respondeu a tempo!` : `❌ ${wrongPlayer.name} errou!`;
+  setStatus("bad", msg+" Liberado — quem apertar primeiro responde.");
   Sfx.wrong();
+  startTimer(buzzWindow);
 });
 
 // ---- resultado ----
