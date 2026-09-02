@@ -166,6 +166,13 @@
           <div><label>Voz (leitura)</label>
             <select id="setVoice"><option value="full">Pergunta + opções</option>
               <option value="question">Só a pergunta</option><option value="off">Desligada</option></select></div>
+          <div><label>Locutor (voz)</label>
+            <select id="setVoiceName"><option value="">Padrão do aparelho</option></select></div>
+          <div><label>Velocidade</label>
+            <select id="setRate"><option value="0.8">Lenta</option><option value="1.03" selected>Normal</option>
+              <option value="1.25">Rápida</option></select></div>
+          <div><label>&nbsp;</label>
+            <button class="chip" id="testVoice" style="cursor:pointer;padding:12px 14px">🔊 Testar voz</button></div>
         </div>
         <div class="players" id="lobbyPlayers"></div>
         <div class="teamcols" id="lobbyTeams" style="display:none">
@@ -264,13 +271,36 @@ document.addEventListener("click", ()=>Sfx.unlock(), { once:true });
 
 // ---- Voz (leitura das perguntas via Text-to-Speech do navegador) ----
 let voiceMode = "full"; // "full" | "question" | "off"
-let ptVoice = null;
-function loadVoices(){ try{ const vs=speechSynthesis.getVoices(); ptVoice = vs.find(v=>/pt[-_]?br/i.test(v.lang)) || vs.find(v=>/^pt/i.test(v.lang)) || null; }catch(e){} }
+let voices = [], chosenVoice = null, voiceRate = 1.03;
+function loadVoices(){
+  if(!("speechSynthesis" in window)) return;
+  try{
+    let vs = speechSynthesis.getVoices() || [];
+    if(!vs.length) return; // ainda não carregou; onvoiceschanged chamará de novo
+    // português primeiro, depois em ordem alfabética
+    voices = vs.slice().sort((a,b)=>{
+      const pa=/^pt/i.test(a.lang)?0:1, pb=/^pt/i.test(b.lang)?0:1;
+      return pa-pb || a.name.localeCompare(b.name);
+    });
+    const sel = $("#setVoiceName");
+    if(sel){
+      const prev = chosenVoice ? chosenVoice.voiceURI : "";
+      sel.innerHTML = "";
+      voices.forEach(v=>{ const o=document.createElement("option"); o.value=v.voiceURI; o.textContent=v.name+" ("+v.lang+")"; sel.appendChild(o); });
+      const def = voices.find(v=>/pt[-_]?br/i.test(v.lang)) || voices.find(v=>/^pt/i.test(v.lang)) || voices[0];
+      const keep = prev && voices.find(v=>v.voiceURI===prev);
+      chosenVoice = keep || def || null;
+      if(chosenVoice) sel.value = chosenVoice.voiceURI;
+    }
+  }catch(e){}
+}
 if("speechSynthesis" in window){ loadVoices(); try{ speechSynthesis.onvoiceschanged=loadVoices; }catch(e){} }
 function speak(text, onend){
   if(voiceMode==="off" || !("speechSynthesis" in window)){ if(onend) onend(); return; }
   try{ speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(text); u.lang="pt-BR"; if(ptVoice) u.voice=ptVoice; u.rate=1.03;
+    const u=new SpeechSynthesisUtterance(text);
+    if(chosenVoice){ u.voice=chosenVoice; u.lang=chosenVoice.lang; } else { u.lang="pt-BR"; }
+    u.rate=voiceRate;
     if(onend){ u.onend=onend; u.onerror=onend; }
     speechSynthesis.speak(u);
   }catch(e){ if(onend) onend(); }
@@ -335,6 +365,16 @@ $("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); if(fsSupported()) goFulls
   category: $("#setCat").value, count: $("#setCount").value, time: $("#setTime").value
 }); };
 $("#setVoice").onchange = ()=>{ voiceMode=$("#setVoice").value; if(voiceMode==="off") stopSpeak(); };
+$("#setVoiceName").onchange = ()=>{ const uri=$("#setVoiceName").value; const v=voices.find(x=>x.voiceURI===uri); if(v) chosenVoice=v; };
+$("#setRate").onchange = ()=>{ voiceRate = parseFloat($("#setRate").value)||1.03; };
+$("#testVoice").onclick = ()=>{
+  if(!("speechSynthesis" in window)){ toast("Este navegador não tem leitura de voz."); return; }
+  try{ speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance("Olá! Esta é a voz que vai ler as perguntas.");
+    if(chosenVoice){ u.voice=chosenVoice; u.lang=chosenVoice.lang; } else u.lang="pt-BR";
+    u.rate=voiceRate; speechSynthesis.speak(u);
+  }catch(e){}
+};
 $("#nextBtn").onclick = ()=>{ stopSpeak(); socket.emit("host:next"); };
 $("#restartBtn").onclick = ()=>{ stopSpeak(); socket.emit("host:restart"); };
 $("#againBtn").onclick = ()=>{ stopSpeak(); socket.emit("host:restart"); };
