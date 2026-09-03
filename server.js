@@ -70,7 +70,7 @@ function roomCode() {
 }
 
 const ANSWER_TIME = 10; // segundos para responder depois de apertar o botão
-const READY_DELAY = 0,5;  // segundos entre apertar o botão e liberar as opções
+const READY_DELAY = 1;  // segundos entre apertar o botão e liberar as opções
 const MAX_READING = 30; // segurança: libera o buzz no máximo após esse tempo de leitura
 const P = p => ({ id: p.id, name: p.name, team: p.team || null });
 
