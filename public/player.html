@@ -294,30 +294,28 @@ function buzz(){
   socket.emit("player:buzz");
 }
 
-// alguém travou a rodada
-socket.on("game:buzzed", ({by, answerTime, readyDelay})=>{
-  const t = answerTime||ANSWER_T;
-  const delay = (readyDelay||1)*1000;
-  if(by.id===ME){
-    amResponder=true;
-    $("#buzzBtn").style.display="none";
-    $("#opts").style.display="none";
-    banner("neutral","⏳ Preparando…");
-    Sfx.tick();
-    // espera 1s antes de liberar as opções
-    setTimeout(()=>{
-      if(answered) return;
-      const box=$("#opts"); box.style.display="flex"; box.className="opts";
-      banner("good","⚡ Sua vez! Responda rápido!");
-      startLocalTimer(t);
-    }, delay);
-  } else {
-    amResponder=false;
-    $("#buzzBtn").style.display="none";
-    $("#opts").style.display="none";
-    banner("neutral","🔒 "+by.name+" está respondendo…");
-    stopLocalTimer();
-  }
+// EU apertei o botão → libera minhas opções (sem depender de comparar IDs)
+socket.on("game:youbuzzed", ({answerTime, readyDelay})=>{
+  amResponder=true;
+  const t = answerTime||ANSWER_T, delay=(readyDelay||1)*1000;
+  $("#buzzBtn").style.display="none";
+  $("#opts").style.display="none";
+  banner("neutral","⏳ Preparando…");
+  Sfx.tap();
+  setTimeout(()=>{
+    const box=$("#opts"); box.style.display="flex"; box.className="opts";
+    banner("good","⚡ Sua vez! Responda rápido!");
+    startLocalTimer(t);
+  }, delay);
+});
+
+// OUTRO jogador apertou → eu fico bloqueado
+socket.on("game:buzzed", ({by})=>{
+  if(amResponder) return;
+  $("#buzzBtn").style.display="none";
+  $("#opts").style.display="none";
+  banner("neutral","🔒 "+(by&&by.name?by.name:"Alguém")+" está respondendo…");
+  stopLocalTimer();
 });
 
 function choose(k){
