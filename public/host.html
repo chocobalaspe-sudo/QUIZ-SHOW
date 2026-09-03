@@ -269,6 +269,13 @@ const Sfx = (()=>{
 })();
 document.addEventListener("click", ()=>Sfx.unlock(), { once:true });
 
+// ---- Sons de acerto/erro (arquivos MP3) ----
+const sndCorrect = new Audio("acerto.mp3");
+const sndWrong = new Audio("erro.mp3");
+function playCorrect(){ try{ sndCorrect.currentTime=0; sndCorrect.play(); }catch(e){} }
+function playWrong(){ try{ sndWrong.currentTime=0; sndWrong.play(); }catch(e){} }
+function primeAudio(){ [sndCorrect,sndWrong].forEach(a=>{ try{ const v=a.volume; a.volume=0; const p=a.play(); if(p&&p.then) p.then(()=>{a.pause();a.currentTime=0;a.volume=v;}).catch(()=>{a.volume=v;}); }catch(e){} }); }
+
 // ---- Voz (leitura das perguntas via Text-to-Speech do navegador) ----
 let voiceMode = "full"; // "full" | "question" | "off"
 let voices = [], chosenVoice = null, voiceRate = 1.03;
@@ -361,7 +368,7 @@ socket.on("room:players", ({players, mode})=>{
 });
 function teamTotals(players){ let blue=0,red=0; players.forEach(p=>{ if(p.team==="blue")blue+=p.score; else if(p.team==="red")red+=p.score; }); return {blue,red}; }
 
-$("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); if(fsSupported()) goFullscreen(); voiceMode=$("#setVoice").value; warmSpeech(); socket.emit("host:start", {
+$("#startBtn").onclick = ()=>{ Sfx.unlock(); Sfx.go(); primeAudio(); if(fsSupported()) goFullscreen(); voiceMode=$("#setVoice").value; warmSpeech(); socket.emit("host:start", {
   category: $("#setCat").value, count: $("#setCount").value, time: $("#setTime").value
 }); };
 $("#setVoice").onchange = ()=>{ voiceMode=$("#setVoice").value; if(voiceMode==="off") stopSpeak(); };
@@ -421,19 +428,22 @@ socket.on("game:buzzopen", ()=>{
 });
 
 // ---- alguém apertou o botão ----
-socket.on("game:buzzed", ({by, answerTime})=>{
+socket.on("game:buzzed", ({by, answerTime, readyDelay})=>{
   stopSpeak();
   const nm = by.name + (by.team ? (by.team==="blue"?" 🔵":" 🔴") : "");
-  setStatus("neutral","⚡ "+nm+" travou! Respondendo… ("+answerTime+"s)");
+  setStatus("neutral","⚡ "+nm+" travou! Preparando…");
   Sfx.tick();
-  startTimer(answerTime);
+  stopTimer(); $("#fill").style.width="100%";
+  setTimeout(()=>{ setStatus("neutral","🎤 "+nm+" respondendo… ("+answerTime+"s)"); startTimer(answerTime); }, (readyDelay||1)*1000);
 });
 
 // ---- errou ou estourou o tempo: reabre para os outros ----
-socket.on("game:reopen", ({wrongPlayer, timedOut})=>{
-  const msg = timedOut ? `⏱ ${wrongPlayer.name} não respondeu a tempo!` : `❌ ${wrongPlayer.name} errou!`;
+socket.on("game:reopen", ({wrongPlayer, timedOut, scores, teamScores})=>{
+  const msg = timedOut ? `⏱ ${wrongPlayer.name} não respondeu a tempo!` : `❌ ${wrongPlayer.name} errou e perdeu 1 ponto!`;
   setStatus("bad", msg+" Liberado — quem apertar primeiro responde.");
-  Sfx.wrong();
+  if(!timedOut) playWrong();
+  if(scores) renderBoard($("#board"), scores);
+  if(teamScores){ $("#tsBlue").textContent=teamScores.blue; $("#tsRed").textContent=teamScores.red; }
   startTimer(buzzWindow);
 });
 
@@ -446,16 +456,16 @@ socket.on("game:result", ({correctIndex, awardedTo, wrongPlayer, timeout, allWro
   });
   const isTeam = (mode||MODE)==="team";
   const who = t => t==="blue" ? "time Azul 🔵" : "time Vermelha 🔴";
-  if(timeout){ setStatus("neutral","⏱ Tempo esgotado! Ninguém pontuou."); Sfx.timeup(); }
+  if(timeout){ setStatus("neutral","⏱ Tempo esgotado! Ninguém pontuou."); }
   else if(awardedTo && wrongPlayer){
     const alvo = isTeam ? who(awardedTo.team) : awardedTo.name;
-    setStatus("good", `❌ ${wrongPlayer.name} errou — ponto para ${alvo}! ✅`); Sfx.wrong(); setTimeout(()=>Sfx.correct(),350);
+    setStatus("good", `❌ ${wrongPlayer.name} errou — ponto para ${alvo}! ✅`); playCorrect();
   }
   else if(awardedTo){
     const alvo = isTeam ? who(awardedTo.team) : awardedTo.name;
-    setStatus("good", `✅ ${awardedTo.name} acertou — ponto para ${alvo}!`); Sfx.correct();
+    setStatus("good", `✅ ${awardedTo.name} acertou — ponto para ${alvo}!`); playCorrect();
   }
-  else if(allWrong){ setStatus("bad","Ninguém acertou desta vez."); Sfx.wrong(); }
+  else if(allWrong){ setStatus("bad","Ninguém acertou desta vez."); playWrong(); }
   else setStatus("neutral","");
   renderBoard($("#board"), scores);
   if(isTeam && teamScores){ $("#tsBlue").textContent=teamScores.blue; $("#tsRed").textContent=teamScores.red; }
@@ -472,14 +482,14 @@ socket.on("game:over", ({scores, teamScores, mode})=>{
     $("#finalBoard").innerHTML =
       `<div class="row lead"><span>🔵 Azul</span><span class="s">${blue}</span></div>`+
       `<div class="row lead"><span>🔴 Vermelha</span><span class="s">${red}</span></div>`;
-    Sfx.correct();
+    playCorrect();
     return;
   }
   const top = scores[0];
   const tie = scores.length>1 && scores[1] && scores[1].score===top.score;
   $("#winner").textContent = tie ? "Empate! 🤝" : `🏆 ${top? top.name : "-"} venceu!`;
   renderBoard($("#finalBoard"), scores, true);
-  Sfx.correct();
+  playCorrect();
 });
 
 socket.on("room:closed", ()=>{ /* host fechou */ });
