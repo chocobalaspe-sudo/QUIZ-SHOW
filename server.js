@@ -70,6 +70,7 @@ function roomCode() {
 }
 
 const ANSWER_TIME = 10; // segundos para responder depois de apertar o botão
+const READY_DELAY = 1;  // segundos entre apertar o botão e liberar as opções
 const MAX_READING = 30; // segurança: libera o buzz no máximo após esse tempo de leitura
 const P = p => ({ id: p.id, name: p.name, team: p.team || null });
 
@@ -200,9 +201,9 @@ function handleBuzz(room, player) {
   cur.responder = player.id;
   clearTimeout(room.buzzTimer);
   clearTimeout(room.answerTimer);
-  room.answerTimer = setTimeout(() => onAnswerTimeout(room, player.id), ANSWER_TIME * 1000 + 500);
+  room.answerTimer = setTimeout(() => onAnswerTimeout(room, player.id), (READY_DELAY + ANSWER_TIME) * 1000 + 500);
 
-  const evt = { by: P(player), answerTime: ANSWER_TIME };
+  const evt = { by: P(player), answerTime: ANSWER_TIME, readyDelay: READY_DELAY };
   io.to(room.code).emit("game:buzzed", evt);
   io.to(room.code + ":host").emit("game:buzzed", evt);
 }
@@ -218,7 +219,8 @@ function handleAnswer(room, player, optionIndex) {
     player.score += 1;
     return resolve(room, { awardedTo: P(player), wrongPlayer: null });
   }
-  // errou → tranca e libera para os adversários
+  // errou → perde 1 ponto, tranca e libera para os adversários
+  player.score = Math.max(0, player.score - 1);
   cur.lockedOut.add(player.id);
   reopenOrEnd(room, P(player), false);
 }
@@ -241,7 +243,8 @@ function reopenOrEnd(room, wrongP, timedOut) {
   }
   cur.phase = "buzz";
   cur.responder = null;
-  const evt = { wrongPlayer: wrongP, lockedOut: [...cur.lockedOut], timedOut: !!timedOut };
+  const evt = { wrongPlayer: wrongP, lockedOut: [...cur.lockedOut], timedOut: !!timedOut,
+    scores: scoreboard(room), teamScores: teamTotals(room) };
   io.to(room.code).emit("game:reopen", evt);
   io.to(room.code + ":host").emit("game:reopen", evt);
   startBuzzTimer(room);
