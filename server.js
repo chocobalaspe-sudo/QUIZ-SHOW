@@ -192,7 +192,7 @@ function startBuzzTimer(room) {
 }
 
 // alguém apertou o botão: trava para os outros e ganha 10s para responder
-function handleBuzz(room, player) {
+function handleBuzz(room, player, socket) {
   const cur = room.current;
   if (!cur || cur.resolved || cur.phase !== "buzz") return;
   if (cur.lockedOut.has(player.id)) return;   // já errou nesta pergunta
@@ -204,8 +204,9 @@ function handleBuzz(room, player) {
   room.answerTimer = setTimeout(() => onAnswerTimeout(room, player.id), (READY_DELAY + ANSWER_TIME) * 1000 + 500);
 
   const evt = { by: P(player), answerTime: ANSWER_TIME, readyDelay: READY_DELAY };
-  io.to(room.code).emit("game:buzzed", evt);
-  io.to(room.code + ":host").emit("game:buzzed", evt);
+  socket.emit("game:youbuzzed", evt);            // direto para quem apertou (libera as opções)
+  socket.to(room.code).emit("game:buzzed", evt); // demais jogadores (ficam bloqueados)
+  io.to(room.code + ":host").emit("game:buzzed", evt); // TV
 }
 
 // resposta do jogador que travou
@@ -388,7 +389,7 @@ io.on("connection", (socket) => {
     if (!room || room.state !== "playing") return;
     const player = room.players.get(socket.id);
     if (!player) return;
-    handleBuzz(room, player);
+    handleBuzz(room, player, socket);
   });
 
   // ---- JOGADOR responde (só quem travou) ----
